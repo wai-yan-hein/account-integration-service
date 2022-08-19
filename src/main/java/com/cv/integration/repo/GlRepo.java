@@ -12,4 +12,9 @@ public interface GlRepo extends JpaRepository<Gl, String> {
     @Modifying
     @Query("delete from Gl o where o.refNo=:refNo and o.tranSource=:tranSource")
     void deleteGl(@Param("refNo") String refNo, @Param("tranSource") String tranSource);
+
+    @Transactional
+    @Modifying
+    @Query("delete from Gl o where o.refNo=:refNo and o.tranSource=:tranSource and o.srcAccCode=:srcAccCode")
+    void deleteGl(@Param("refNo") String refNo, @Param("tranSource") String tranSource, @Param("srcAccCode") String srcAcc);
 }

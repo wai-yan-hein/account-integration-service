@@ -19,6 +19,8 @@ public class VCOA {
     @Id
     @Column(name = "coa_code")
     private String coaCode;
+    @Column(name = "coa_name_eng")
+    private String caoNameEng;
     @Column(name = "cur_code")
     private String curCode;
 }

@@ -5,10 +5,7 @@ import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import javax.persistence.*;
 
 @Getter
 @Setter
@@ -41,6 +38,15 @@ public class Trader implements java.io.Serializable {
     @NonNull
     @Column(name = "comp_code")
     private String compCode;
+    @Column(name = "created_by")
+    private String createdBy;
+    @Transient
+    private String accountName;
+    @Transient
+    private String accountParent;
+    @Transient
+    private String groupCode;
+
 
     public Trader() {
     }

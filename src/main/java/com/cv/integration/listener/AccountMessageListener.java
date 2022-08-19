@@ -2,10 +2,8 @@ package com.cv.integration.listener;
 
 import com.cv.integration.common.Util1;
 import com.cv.integration.entity.*;
-import com.cv.integration.repo.GlRepo;
-import com.cv.integration.repo.SeqTableRepo;
-import com.cv.integration.repo.SystemPropertyRepo;
-import com.cv.integration.repo.TraderRepo;
+import com.cv.integration.repo.*;
+import com.cv.integration.service.COAService;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +18,7 @@ import javax.jms.JMSException;
 import javax.jms.MapMessage;
 import javax.jms.Session;
 import java.text.DateFormat;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Slf4j
 @Component
@@ -32,16 +27,25 @@ public class AccountMessageListener {
     @Autowired
     private final GlRepo glRepo;
     @Autowired
+    private final GlService glService;
+    @Autowired
     private final TraderRepo traderRepo;
     @Autowired
     private final JmsTemplate jmsTemplate;
     @Autowired
     private final SystemPropertyRepo systemPropertyRepo;
     @Autowired
-    private final SeqTableRepo seqTableRepo;
+    private final COAOpeningRepo openingRepo;
+    @Autowired
+    private final COAService coaService;
+    @Autowired
+    private final COARepo coaRepo;
     private static final String LISTEN_QUEUE = "ACCOUNT_QUEUE";
     private final Gson gson = new GsonBuilder().setDateFormat(DateFormat.FULL, DateFormat.FULL).create();
     private final Map<String, String> hmProperty = new HashMap<>();
+    private final HashMap<String, String> hmSrc = new HashMap<>();
+    private final HashMap<String, String> hmAcc = new HashMap<>();
+    private final HashMap<String, String> hmDep = new HashMap<>();
 
 
     private void sendMessage(String senderQueue, String entity, String code) {
@@ -62,9 +66,65 @@ public class AccountMessageListener {
         switch (entity) {
             case "GL" -> processGL(message);
             case "GL_LIST" -> processGLList(message);
+            case "GL_NEW" -> processGLNEW(message);
             case "TRADER" -> processTrader(message);
+            case "GL_DEL" -> deleteGL(message);
+            case "OPENING" -> processOpening(message);
+            case "COA" -> processCOA(message);
             default -> log.error("Unexpected value: " + entity);
         }
+    }
+
+    private void processCOA(MapMessage message) {
+        try {
+            String senderQueue = message.getString("SENDER_QUEUE");
+            String entity = String.format("ACK_%s", message.getString("OPTION"));
+            String data = message.getString("DATA");
+            if (!Objects.isNull(data)) {
+                ChartOfAccount coa = gson.fromJson(data, ChartOfAccount.class);
+                coa = coaService.save(coa);
+                String code = String.format("%s,%s", coa.getMigCode(), coa.getCoaCode());
+                sendMessage(senderQueue, entity, code);
+            }
+        } catch (Exception e) {
+            log.error(String.format("processCOA: %s", e.getMessage()));
+        }
+    }
+
+    private void processOpening(MapMessage message) {
+        try {
+            String senderQueue = message.getString("SENDER_QUEUE");
+            String entity = String.format("ACK_%s", message.getString("OPTION"));
+            String data = message.getString("DATA");
+            if (!Objects.isNull(data)) {
+                COAOpening op = gson.fromJson(data, COAOpening.class);
+                op.setSourceAccId(getAccount(op.getTraderCode()));
+                openingRepo.deleteOpening(op.getTraderCode());
+                openingRepo.save(op);
+                sendMessage(senderQueue, entity, op.getTraderCode());
+            }
+        } catch (JMSException e) {
+            log.error(String.format("processOpening: %s", e.getMessage()));
+        }
+
+    }
+
+    private void deleteGL(MapMessage message) {
+        try {
+            String vouNo = message.getString("VOU_NO");
+            String tranSource = message.getString("TRAN_SOURCE");
+            String srcAcc = message.getString("SRC_ACC");
+            if (Objects.isNull(srcAcc)) {
+                glRepo.deleteGl(vouNo, tranSource);
+            } else {
+                glRepo.deleteGl(vouNo, tranSource, srcAcc);
+
+            }
+        } catch (JMSException e) {
+            log.error(String.format("deleteGL: %s", e.getMessage()));
+
+        }
+
     }
 
     private void processGL(MapMessage message) {
@@ -82,7 +142,6 @@ public class AccountMessageListener {
                             gl.setSrcAccCode(Util1.getProperty(gl.getCurCode()));
                         }
                     }
-                    gl.setGlCode(getGlCode(gl.getCompCode(), gl.getMacId()));
                     log.info("GL Code: " + gl.getGlCode());
                     glRepo.save(gl);
                 }
@@ -112,8 +171,15 @@ public class AccountMessageListener {
                                 gl.setSrcAccCode(Util1.getProperty(gl.getCurCode()));
                             }
                         }
-                        gl.setGlCode(getGlCode(gl.getCompCode(), gl.getMacId()));
-                        glRepo.save(gl);
+                        double amt = Util1.getDouble(gl.getDrAmt()) + Util1.getDouble(gl.getCrAmt());
+                       if (amt > 0) {
+                            //follow coa department
+                            String deptCode = Util1.isNull(getDeptCode(gl.getSrcAccCode()), getDeptCode(gl.getAccCode()));
+                            if (deptCode != null) {
+                                gl.setDeptCode(deptCode);
+                            }
+                            glService.save(gl);
+                        }
                     }
                 }
                 //telling received successfully
@@ -124,6 +190,105 @@ public class AccountMessageListener {
         }
     }
 
+    private String getDeptCode(String account) {
+        if (hmDep.isEmpty()) {
+            List<ChartOfAccount> list = coaService.getCOADepartment();
+            if (!list.isEmpty()) {
+                list.forEach((d) -> {
+                    hmDep.put(d.getCoaCode(), d.getDeptCode());
+                });
+            } else {
+                hmDep.put("EMP", "EMP");
+            }
+        }
+        return hmDep.get(account);
+    }
+
+    private void processGLNEW(MapMessage message) {
+        try {
+            String senderQueue = message.getString("SENDER_QUEUE");
+            String entity = String.format("ACK_%s", message.getString("OPTION"));
+            String data = message.getString("DATA");
+            if (!Objects.isNull(data)) {
+                Gl[] glList = gson.fromJson(data, Gl[].class);
+                String vouNo = glList[0].getRefNo();
+                String tranSource = glList[0].getTranSource();
+                boolean delete = glList[0].isDeleted();
+                glRepo.deleteGl(vouNo, tranSource);
+                if (!delete) {
+                    for (Gl gl : glList) {
+                        if (Objects.isNull(gl.getSrcAccCode())) {
+                            gl.setSrcAccCode(getSourceAcc(gl));
+                        }
+                        if (Objects.isNull(gl.getAccCode())) {
+                            gl.setAccCode(getAccount(gl.getTraderCode()));
+                        }
+                        if (Util1.isMultiCur()) {
+                            if (gl.isCash()) {
+                                gl.setSrcAccCode(Util1.getProperty(gl.getCurCode()));
+                            }
+                        }
+                        double amt = Util1.getDouble(gl.getDrAmt()) + Util1.getDouble(gl.getCrAmt());
+                        if (amt > 0) {
+                            glRepo.save(gl);
+                        }
+                    }
+                }
+                //telling received successfully
+                sendMessage(senderQueue, entity, vouNo);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException(String.format("processGL: %s", e));
+        }
+    }
+
+    private String getSourceAcc(Gl gl) {
+        String createdBy = gl.getCreatedBy();
+        String compCode = gl.getCompCode();
+        Integer macId = gl.getMacId();
+        String coaName = gl.getMigName();
+        String catId = gl.getMigId();
+        String coaParent = gl.getCoaParent();
+        String key = String.format("%s*%s*%s", catId, coaParent, compCode);
+        if (hmSrc.isEmpty()) {
+            List<ChartOfAccount> lv3 = coaRepo.getLV3(compCode);
+            for (ChartOfAccount coa : lv3) {
+                String tmp = String.format("%s*%s*%s", coa.getMigCode(), coa.getCoaParent(), compCode);
+                hmSrc.put(tmp, coa.getCoaCode());
+            }
+        }
+        String account = hmSrc.get(key);
+        if (Objects.isNull(account)) {
+            ChartOfAccount coa = new ChartOfAccount();
+            coa.setCoaNameEng(coaName);
+            coa.setActive(true);
+            coa.setMarked(false);
+            coa.setCreatedDate(Util1.getTodayDate());
+            coa.setCreatedBy(createdBy);
+            coa.setCoaParent(coaParent);
+            coa.setOption("USR");
+            coa.setCompCode(compCode);
+            coa.setCoaLevel(3);
+            coa.setMigCode(catId);
+            coa.setMacId(macId);
+            coa = coaService.save(coa);
+            account = coa.getCoaCode();
+            log.info("crate new chart of account.");
+            hmSrc.put(key, coa.getCoaCode());
+        }
+        return account;
+    }
+
+    private String getAccount(String traderCode) {
+        if (hmAcc.isEmpty()) {
+            List<Trader> traders = traderRepo.findAll();
+            for (Trader trader : traders) {
+                hmAcc.put(trader.getTraderCode(), trader.getAccountCode());
+            }
+        }
+        return hmAcc.get(traderCode);
+    }
+
     private void processTrader(MapMessage message) {
         try {
             String senderQueue = message.getString("SENDER_QUEUE");
@@ -131,9 +296,7 @@ public class AccountMessageListener {
             String data = message.getString("DATA");
             if (!Objects.isNull(data)) {
                 Trader trader = gson.fromJson(data, Trader.class);
-                String type = trader.getDiscriminator();
-                String compCode = trader.getCompCode();
-                if (Objects.isNull(trader.getAccountCode())) trader.setAccountCode(getTraderAccount(type, compCode));
+                trader.setAccountCode(getChartOfAccount(trader));
                 traderRepo.save(trader);
                 String traderCode = trader.getTraderCode();
                 sendMessage(senderQueue, entity, traderCode);
@@ -152,22 +315,38 @@ public class AccountMessageListener {
         return hmProperty.get(type);
     }
 
-    private String getGlCode(String compCode, Integer macId) {
-        int seqNo = 1;
-        String period = Util1.toDateStr(Util1.getTodayDate(), "MMyyyy");
-        SeqKey key = new SeqKey();
-        key.setCompCode(compCode);
-        key.setPeriod(period);
-        key.setSeqOption("GL");
-        key.setMacId(macId);
-        Optional<SeqTable> seq = seqTableRepo.findById(key);
-        if (seq.isPresent()) {
-            seqNo = seq.get().getSeqNo();
+    private String getChartOfAccount(Trader trader) {
+        if (hmAcc.isEmpty()) {
+            List<ChartOfAccount> c = coaRepo.findAll();
+            for (ChartOfAccount coa : c) {
+                hmAcc.put(coa.getMigCode(), coa.getCoaCode());
+            }
         }
-        SeqTable seqTable = new SeqTable();
-        seqTable.setSeqKey(key);
-        seqTable.setSeqNo(seqNo + 1);
-        seqTableRepo.save(seqTable);
-        return String.format("%0" + 3 + "d", macId) + period + String.format("%0" + 9 + "d", seqNo);
+        String groupCode = trader.getGroupCode();
+        String coaCode = hmAcc.get(groupCode);
+        String coaName = trader.getAccountName();
+        String coaParent = trader.getAccountParent();
+        if (coaCode == null) {
+            ChartOfAccount coa = new ChartOfAccount();
+            coa.setCoaNameEng(coaName);
+            coa.setActive(true);
+            coa.setMarked(false);
+            coa.setCreatedDate(Util1.getTodayDate());
+            coa.setCoaParent(coaParent);
+            coa.setOption("USR");
+            coa.setCreatedBy(trader.getCreatedBy());
+            coa.setCompCode(trader.getCompCode());
+            coa.setCoaLevel(3);
+            coa.setMacId(trader.getMacId());
+            coa.setMigCode(groupCode);
+            coa = coaService.save(coa);
+            coaCode = coa.getCoaCode();
+            hmAcc.put(groupCode, coaCode);
+            log.info("create new chart of account.");
+            return coaCode;
+        }
+        return coaCode;
     }
+
+
 }

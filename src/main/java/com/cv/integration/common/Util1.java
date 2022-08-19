@@ -15,7 +15,12 @@ public class Util1 {
     public static Date getTodayDate() {
         return Calendar.getInstance().getTime();
     }
-
+    public static String isNull(String input, String output) {
+        return isNullOrEmpty(input) ? output : input;
+    }
+    public static boolean isNullOrEmpty(Object obj) {
+        return obj == null || obj.toString().isEmpty();
+    }
     public static String toDateStr(Date date, String format) {
         SimpleDateFormat formatter = new SimpleDateFormat(format);
         return date != null ? formatter.format(date) : null;
@@ -36,5 +41,9 @@ public class Util1 {
 
     public static String getProperty(String key) {
         return hmSysProp.get(key);
+    }
+
+    public static double getDouble(Object obj) {
+        return obj == null ? 0 : Double.parseDouble(obj.toString());
     }
 }

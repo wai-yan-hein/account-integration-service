@@ -66,6 +66,14 @@ public class Gl implements java.io.Serializable {
     private boolean deleted;
     @Transient
     private boolean cash = false;
+    @Transient
+    private String coaParent;
+    @Transient
+    private String migId;
+    @Transient
+    private String migName;
+    @Transient
+    private String traderGroup;
 
     public Gl() {
     }
