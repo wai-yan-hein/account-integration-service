@@ -15,15 +15,46 @@ public class Util1 {
     public static Date getTodayDate() {
         return Calendar.getInstance().getTime();
     }
+
     public static String isNull(String input, String output) {
         return isNullOrEmpty(input) ? output : input;
     }
+
     public static boolean isNullOrEmpty(Object obj) {
         return obj == null || obj.toString().isEmpty();
     }
+
     public static String toDateStr(Date date, String format) {
         SimpleDateFormat formatter = new SimpleDateFormat(format);
         return date != null ? formatter.format(date) : null;
+    }
+
+    private static String cusAcc;
+    private static String supAcc;
+    private static boolean multiCur;
+
+    public static String getCusAcc() {
+        return cusAcc;
+    }
+
+    public static void setCusAcc(String cusAcc) {
+        Util1.cusAcc = cusAcc;
+    }
+
+    public static String getSupAcc() {
+        return supAcc;
+    }
+
+    public static void setSupAcc(String supAcc) {
+        Util1.supAcc = supAcc;
+    }
+
+    public static boolean isMultiCur() {
+        return multiCur;
+    }
+
+    public static void setMultiCur(boolean multiCur) {
+        Util1.multiCur = multiCur;
     }
 
     public static boolean getBoolean(String obj) {
@@ -35,13 +66,6 @@ public class Util1 {
 
     }
 
-    public static boolean isMultiCur() {
-        return Util1.getBoolean(hmSysProp.get("system.multi.currency.flag"));
-    }
-
-    public static String getProperty(String key) {
-        return hmSysProp.get(key);
-    }
 
     public static double getDouble(Object obj) {
         return obj == null ? 0 : Double.parseDouble(obj.toString());
