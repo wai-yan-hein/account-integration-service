@@ -296,11 +296,7 @@ public class AccountMessageListener {
             String data = message.getString("DATA");
             if (!Objects.isNull(data)) {
                 Trader trader = gson.fromJson(data, Trader.class);
-<<<<<<< HEAD
-                trader.setAccountCode(getTraderAccount(trader.getDiscriminator(), trader.getCompCode()));
-=======
                 trader.setAccountCode(getChartOfAccount(trader.getDiscriminator()));
->>>>>>> e083dfc805e50fc0bcd918edc9b59ee1c1f0cb6f
                 traderRepo.save(trader);
                 String traderCode = trader.getTraderCode();
                 sendMessage(senderQueue, entity, traderCode);
@@ -310,17 +306,6 @@ public class AccountMessageListener {
         }
     }
 
-<<<<<<< HEAD
-    private String getTraderAccount(String type, String compCode) {
-        if (hmProperty.get(type) == null) {
-            String propKey = type.contains("C") ? "system.customer.setup.account" : "system.supplier.setup.account";
-            Optional<SystemProperty> sys = systemPropertyRepo.findById(new SystemPropertyKey(propKey, compCode));
-            sys.ifPresent(systemProperty -> hmProperty.put(type, systemProperty.getPropValue()));
-        }
-        return hmProperty.get(type);
-    }
-=======
->>>>>>> e083dfc805e50fc0bcd918edc9b59ee1c1f0cb6f
 
     private String getChartOfAccount(String type) {
         return type.equals("C") ? Util1.getCusAcc() : Util1.getSupAcc();
