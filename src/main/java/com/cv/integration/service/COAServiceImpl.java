@@ -23,8 +23,8 @@ public class COAServiceImpl implements COAService {
 
     @Override
     public ChartOfAccount save(ChartOfAccount coa) {
-        if (!Objects.isNull(coa)) {
-            coa.setCoaCode(getCOACode(coa.getMacId(), coa.getCompCode()));
+        if (!Objects.isNull(coa.getKey().getCoaCode())) {
+            coa.getKey().setCoaCode(getCOACode(coa.getMacId(), coa.getKey().getCompCode()));
         }
         coaRepo.save(coa);
         return coa;

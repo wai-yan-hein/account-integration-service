@@ -1,6 +1,7 @@
 package com.cv.integration.repo;
 
 import com.cv.integration.common.Util1;
+import com.cv.integration.entity.ChartOfAccount;
 import com.cv.integration.entity.Gl;
 import com.cv.integration.entity.SeqKey;
 import com.cv.integration.entity.SeqTable;
@@ -23,6 +24,8 @@ public class GlServiceImpl implements GlService {
         gl.setGlCode(getGlCode(gl.getCompCode(), gl.getMacId()));
         return glRepo.save(gl);
     }
+
+
 
     private String getGlCode(String compCode, Integer macId) {
         int seqNo = 1;

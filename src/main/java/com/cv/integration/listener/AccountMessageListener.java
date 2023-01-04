@@ -18,7 +18,9 @@ import javax.jms.JMSException;
 import javax.jms.MapMessage;
 import javax.jms.Session;
 import java.text.DateFormat;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -32,8 +34,7 @@ public class AccountMessageListener {
     private final TraderRepo traderRepo;
     @Autowired
     private final JmsTemplate jmsTemplate;
-    @Autowired
-    private final SystemPropertyRepo systemPropertyRepo;
+
     @Autowired
     private final COAOpeningRepo openingRepo;
     @Autowired
@@ -42,7 +43,6 @@ public class AccountMessageListener {
     private final COARepo coaRepo;
     private static final String LISTEN_QUEUE = "ACCOUNT_QUEUE";
     private final Gson gson = new GsonBuilder().setDateFormat(DateFormat.FULL, DateFormat.FULL).create();
-    private final Map<String, String> hmProperty = new HashMap<>();
     private final HashMap<String, String> hmSrc = new HashMap<>();
     private final HashMap<String, String> hmAcc = new HashMap<>();
     private final HashMap<String, String> hmDep = new HashMap<>();
@@ -83,7 +83,7 @@ public class AccountMessageListener {
             if (!Objects.isNull(data)) {
                 ChartOfAccount coa = gson.fromJson(data, ChartOfAccount.class);
                 coa = coaService.save(coa);
-                String code = String.format("%s,%s", coa.getMigCode(), coa.getCoaCode());
+                String code = String.format("%s,%s", coa.getMigCode(), coa.getKey().getCoaCode());
                 sendMessage(senderQueue, entity, code);
             }
         } catch (Exception e) {
@@ -139,7 +139,7 @@ public class AccountMessageListener {
                 if (!gl.isDeleted()) {
                     if (Util1.isMultiCur()) {
                         if (gl.isCash()) {
-                            gl.setSrcAccCode(Util1.getProperty(gl.getCurCode()));
+                            gl.setSrcAccCode(Util1.hmSysProp.get(gl.getCurCode()));
                         }
                     }
                     log.info("GL Code: " + gl.getGlCode());
@@ -168,7 +168,7 @@ public class AccountMessageListener {
                     for (Gl gl : glList) {
                         if (Util1.isMultiCur()) {
                             if (gl.isCash()) {
-                                gl.setSrcAccCode(Util1.getProperty(gl.getCurCode()));
+                                gl.setSrcAccCode(Util1.hmSysProp.get(gl.getCurCode()));
                             }
                         }
                         double amt = Util1.getDouble(gl.getDrAmt()) + Util1.getDouble(gl.getCrAmt());
@@ -194,9 +194,7 @@ public class AccountMessageListener {
         if (hmDep.isEmpty()) {
             List<ChartOfAccount> list = coaService.getCOADepartment();
             if (!list.isEmpty()) {
-                list.forEach((d) -> {
-                    hmDep.put(d.getCoaCode(), d.getDeptCode());
-                });
+                list.forEach((d) -> hmDep.put(d.getKey().getCoaCode(), d.getDeptCode()));
             } else {
                 hmDep.put("EMP", "EMP");
             }
@@ -225,7 +223,7 @@ public class AccountMessageListener {
                         }
                         if (Util1.isMultiCur()) {
                             if (gl.isCash()) {
-                                gl.setSrcAccCode(Util1.getProperty(gl.getCurCode()));
+                                gl.setSrcAccCode(Util1.hmSysProp.get((gl.getCurCode())));
                             }
                         }
                         double amt = Util1.getDouble(gl.getDrAmt()) + Util1.getDouble(gl.getCrAmt());
@@ -254,12 +252,15 @@ public class AccountMessageListener {
             List<ChartOfAccount> lv3 = coaRepo.getLV3(compCode);
             for (ChartOfAccount coa : lv3) {
                 String tmp = String.format("%s*%s*%s", coa.getMigCode(), coa.getCoaParent(), compCode);
-                hmSrc.put(tmp, coa.getCoaCode());
+                hmSrc.put(tmp, coa.getKey().getCoaCode());
             }
         }
         String account = hmSrc.get(key);
         if (Objects.isNull(account)) {
             ChartOfAccount coa = new ChartOfAccount();
+            COAKey coaKey = new COAKey();
+            coaKey.setCompCode(compCode);
+            coa.setKey(coaKey);
             coa.setCoaNameEng(coaName);
             coa.setActive(true);
             coa.setMarked(false);
@@ -267,14 +268,13 @@ public class AccountMessageListener {
             coa.setCreatedBy(createdBy);
             coa.setCoaParent(coaParent);
             coa.setOption("USR");
-            coa.setCompCode(compCode);
             coa.setCoaLevel(3);
             coa.setMigCode(catId);
             coa.setMacId(macId);
             coa = coaService.save(coa);
-            account = coa.getCoaCode();
+            account = coa.getKey().getCoaCode();
             log.info("crate new chart of account.");
-            hmSrc.put(key, coa.getCoaCode());
+            hmSrc.put(key, coa.getKey().getCoaCode());
         }
         return account;
     }
@@ -296,7 +296,7 @@ public class AccountMessageListener {
             String data = message.getString("DATA");
             if (!Objects.isNull(data)) {
                 Trader trader = gson.fromJson(data, Trader.class);
-                trader.setAccountCode(getChartOfAccount(trader));
+                trader.setAccountCode(getChartOfAccount(trader.getDiscriminator()));
                 traderRepo.save(trader);
                 String traderCode = trader.getTraderCode();
                 sendMessage(senderQueue, entity, traderCode);
@@ -306,46 +306,9 @@ public class AccountMessageListener {
         }
     }
 
-    private String getTraderAccount(String type, String compCode) {
-        if (hmProperty.get(type) == null) {
-            String propKey = type.equals("C") ? "system.customer.setup.account" : "system.supplier.setup.account";
-            Optional<SystemProperty> sys = systemPropertyRepo.findById(new SystemPropertyKey(propKey, compCode));
-            sys.ifPresent(systemProperty -> hmProperty.put(type, systemProperty.getPropValue()));
-        }
-        return hmProperty.get(type);
-    }
 
-    private String getChartOfAccount(Trader trader) {
-        if (hmAcc.isEmpty()) {
-            List<ChartOfAccount> c = coaRepo.findAll();
-            for (ChartOfAccount coa : c) {
-                hmAcc.put(coa.getMigCode(), coa.getCoaCode());
-            }
-        }
-        String groupCode = trader.getGroupCode();
-        String coaCode = hmAcc.get(groupCode);
-        String coaName = trader.getAccountName();
-        String coaParent = trader.getAccountParent();
-        if (coaCode == null) {
-            ChartOfAccount coa = new ChartOfAccount();
-            coa.setCoaNameEng(coaName);
-            coa.setActive(true);
-            coa.setMarked(false);
-            coa.setCreatedDate(Util1.getTodayDate());
-            coa.setCoaParent(coaParent);
-            coa.setOption("USR");
-            coa.setCreatedBy(trader.getCreatedBy());
-            coa.setCompCode(trader.getCompCode());
-            coa.setCoaLevel(3);
-            coa.setMacId(trader.getMacId());
-            coa.setMigCode(groupCode);
-            coa = coaService.save(coa);
-            coaCode = coa.getCoaCode();
-            hmAcc.put(groupCode, coaCode);
-            log.info("create new chart of account.");
-            return coaCode;
-        }
-        return coaCode;
+    private String getChartOfAccount(String type) {
+        return type.equals("C") ? Util1.getCusAcc() : Util1.getSupAcc();
     }
 
 

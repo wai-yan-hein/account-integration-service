@@ -7,16 +7,12 @@ import javax.persistence.*;
 import java.util.Date;
 import java.util.Objects;
 
-@Getter
-@Setter
-@ToString
-@RequiredArgsConstructor
+@Data
 @Entity
 @Table(name = "chart_of_account")
 public class ChartOfAccount {
-    @Id
-    @Column(name = "coa_code")
-    private String coaCode;
+    @EmbeddedId
+    private COAKey key;
     @Column(name = "coa_name_eng")
     private String coaNameEng;
     @Column(name = "active")
@@ -30,8 +26,8 @@ public class ChartOfAccount {
     private String coaParent;
     @Column(name = "coa_option")
     private String option;
-    @Column(name = "comp_code")
-    private String compCode;
+    @Column(name = "cur_code")
+    private String curCode;
     @Column(name = "coa_level")
     private Integer coaLevel;
     @Column(name = "mig_code")
@@ -43,13 +39,7 @@ public class ChartOfAccount {
     @Column(name = "dept_code")
     private String deptCode;
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || Hibernate.getClass(this) != Hibernate.getClass(o)) return false;
-        ChartOfAccount that = (ChartOfAccount) o;
-        return coaCode != null && Objects.equals(coaCode, that.coaCode);
-    }
+
 
     @Override
     public int hashCode() {

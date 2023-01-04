@@ -1,5 +1,6 @@
 package com.cv.integration.repo;
 
+import com.cv.integration.entity.ChartOfAccount;
 import com.cv.integration.entity.Gl;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -17,4 +18,7 @@ public interface GlRepo extends JpaRepository<Gl, String> {
     @Modifying
     @Query("delete from Gl o where o.refNo=:refNo and o.tranSource=:tranSource and o.srcAccCode=:srcAccCode")
     void deleteGl(@Param("refNo") String refNo, @Param("tranSource") String tranSource, @Param("srcAccCode") String srcAcc);
+
+
+
 }

@@ -1,16 +1,14 @@
 package com.cv.integration.config;
 
 import com.cv.integration.common.Util1;
-import com.cv.integration.entity.SystemProperty;
-import com.cv.integration.entity.VCOA;
-import com.cv.integration.repo.SystemPropertyRepo;
-import com.cv.integration.repo.VCOARepo;
+import com.cv.integration.entity.ChartOfAccount;
+import com.cv.integration.repo.COARepo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.core.env.Environment;
 
 import java.util.List;
 
@@ -19,22 +17,19 @@ import java.util.List;
 @PropertySource("file:config/application.properties")
 public class AppConfig {
     @Autowired
-    private SystemPropertyRepo systemPropertyRepo;
+    private COARepo coaRepo;
     @Autowired
-    private VCOARepo vcoaRepo;
-    @Value("${account.compcode}")
-    private String compCode;
+    private Environment environment;
 
     @Bean
     public void loadSysProp() {
         log.info("loadSysProp.");
-        List<SystemProperty> all = systemPropertyRepo.findByCompCode(compCode);
-        for (SystemProperty sp : all) {
-            Util1.hmSysProp.put(sp.getKey().getPropKey(), sp.getPropValue());
+        List<ChartOfAccount> list = coaRepo.getCOACurrency();
+        for (ChartOfAccount coa : list) {
+            Util1.hmSysProp.put(coa.getCurCode(), coa.getKey().getCoaCode());
         }
-        List<VCOA> currencyCOA = vcoaRepo.getCurrencyCOA();
-        for (VCOA coa : currencyCOA) {
-            Util1.hmSysProp.put(coa.getCurCode(), coa.getCoaCode());
-        }
+        Util1.setCusAcc(environment.getRequiredProperty("customer.account"));
+        Util1.setSupAcc(environment.getRequiredProperty("supplier.account"));
+        Util1.setMultiCur(Util1.getBoolean(environment.getRequiredProperty("multi.currency")));
     }
 }
